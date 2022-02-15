@@ -4,14 +4,19 @@ use std::io::BufRead;
 
 const TARGET_TOTAL: i64 = 2020;
 
-fn find_pair(nums: &[i64]) -> Option<(usize, usize)> {
-  let mut upper = nums.iter().position(|&n| n >= TARGET_TOTAL / 2)?;
-  let mut lower: i64 = upper as i64 - 1;
-  while lower >= 0 && upper < nums.len() {
-    match (nums[lower as usize] + nums[upper]).cmp(&TARGET_TOTAL) {
-      Ordering::Less => upper += 1,
-      Ordering::Equal => return Some((lower as usize, upper)),
-      Ordering::Greater => lower -= 1,
+fn find_pair(lower: &[i64], mid:i64, upper: &[i64]) -> Option<(usize, usize)> {
+  let mut u = 0;
+  let mut l= lower.len() - 1;
+  while u < upper.len() {
+    match (lower[l] + mid + upper[u]).cmp(&TARGET_TOTAL) {
+      Ordering::Less => u += 1,
+      Ordering::Equal => return Some((l, lower.len() + u + 1)),
+      Ordering::Greater =>
+        if l == 0 {
+          break
+        } else {
+          l -= 1
+        }
     }
   }
   None
@@ -23,8 +28,14 @@ fn main() {
     .map(|x| x.unwrap().trim().parse::<i64>().unwrap())
     .collect();
   nums.sort();
-  match find_pair(&nums) {
-    Some((l,r)) => println!("{} * {} -> {}", nums[l], nums[r], nums[l] * nums[r]),
-    None => println!("No pairs"),
+  for mid in 1..nums.len()-1 {
+    match find_pair(&nums[..mid], nums[mid], &nums[mid+1..]) {
+      Some((l,r)) => {
+        println!("{} * {} * {}-> {}", nums[l], nums[mid], nums[r],  nums[l] * nums[mid] * nums[r]);
+        return
+      },
+      None => {},
+    }
   }
+  println!("No triples")
 }
