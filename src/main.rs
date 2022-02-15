@@ -27,8 +27,8 @@ impl Rule {
   }
 
   fn compliant(&self) -> bool {
-    let cnt = self.password.chars().filter(|c| *c == self.goal).count();
-    self.lower <= cnt && cnt <= self.upper
+    let chars: Vec<char> = self.password.chars().collect();
+    (chars[self.lower - 1] == self.goal) != (chars[self.upper - 1] == self.goal)
   }
 }
 
