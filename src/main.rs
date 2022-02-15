@@ -1,41 +1,42 @@
-use std::cmp::Ordering;
 use std::io;
 use std::io::BufRead;
 
-const TARGET_TOTAL: i64 = 2020;
+use lazy_static::lazy_static;
+use regex::Regex;
 
-fn find_pair(lower: &[i64], mid:i64, upper: &[i64]) -> Option<(usize, usize)> {
-  let mut u = 0;
-  let mut l= lower.len() - 1;
-  while u < upper.len() {
-    match (lower[l] + mid + upper[u]).cmp(&TARGET_TOTAL) {
-      Ordering::Less => u += 1,
-      Ordering::Equal => return Some((l, lower.len() + u + 1)),
-      Ordering::Greater =>
-        if l == 0 {
-          break
-        } else {
-          l -= 1
-        }
+#[derive(Debug)]
+struct Rule {
+  lower: usize,
+  upper: usize,
+  goal: char,
+  password: String,
+}
+
+impl Rule {
+  fn parse(line: &str) -> Option<Self> {
+    lazy_static! {
+        static ref PASSWORD_PATTERN: Regex = Regex::new(
+            r"^(?P<lower>\d+)-(?P<upper>\d+) (?P<char>.):\s*(?P<pass>\w+)$").unwrap();
     }
+    let cap = PASSWORD_PATTERN.captures(line)?;
+    let lower = cap.name("lower")?.as_str().parse::<usize>().unwrap();
+    let upper = cap.name("upper")?.as_str().parse::<usize>().unwrap();
+    let goal = cap.name("char")?.as_str().chars().next()?;
+    let password = String::from(cap.name("pass")?.as_str());
+    Some(Rule{lower, upper, goal, password})
   }
-  None
+
+  fn compliant(&self) -> bool {
+    let cnt = self.password.chars().filter(|c| *c == self.goal).count();
+    self.lower <= cnt && cnt <= self.upper
+  }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let mut nums: Vec<i64> = stdin.lock().lines()
-    .map(|x| x.unwrap().trim().parse::<i64>().unwrap())
+  let rules: Vec<Rule> = stdin.lock().lines()
+    .map(|x| Rule::parse(x.unwrap().trim()).unwrap())
+    .filter(|r| r.compliant())
     .collect();
-  nums.sort();
-  for mid in 1..nums.len()-1 {
-    match find_pair(&nums[..mid], nums[mid], &nums[mid+1..]) {
-      Some((l,r)) => {
-        println!("{} * {} * {}-> {}", nums[l], nums[mid], nums[r],  nums[l] * nums[mid] * nums[r]);
-        return
-      },
-      None => {},
-    }
-  }
-  println!("No triples")
+  println!("{}", rules.len());
 }
