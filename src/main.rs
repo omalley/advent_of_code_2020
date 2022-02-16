@@ -1,39 +1,56 @@
+use std::collections::HashSet;
 use std::io;
 use std::io::BufRead;
 
 #[derive(Debug)]
-struct BoardingCard {
-  row: usize,
-  seat: usize,
+struct Person {
+  answers: Vec<char>,
 }
 
-impl BoardingCard {
+impl Person {
   fn parse(line: &str) -> Self {
-    let chars: Vec<char> = line.chars().collect();
-    let row = chars[..7].iter()
-      .map(|&c| if c == 'F' {0} else {1})
-      .fold(0, |acc, v| 2 * acc + v);
-    let seat = chars[7..].iter()
-      .map(|&c| if c == 'L' {0} else {1})
-      .fold(0, |acc, v| 2 * acc + v);
-    BoardingCard{row, seat}
+    let mut answers: Vec<char> = line.trim().chars().collect();
+    answers.sort();
+    Person{answers}
+  }
+}
+
+#[derive(Debug)]
+struct Group {
+  people: Vec<Person>,
+}
+
+impl Group {
+  fn parse(lines: &mut dyn Iterator<Item=Result<String,io::Error>>) -> Option<Self> {
+    let mut people: Vec<Person> = Vec::new();
+    for line in lines {
+      let line = line.unwrap();
+      if line.is_empty() {
+        return Some(Group{people})
+      } else {
+        people.push(Person::parse(&line));
+      }
+    }
+    if people.is_empty() {
+      None
+    } else {
+      Some(Group{people})
+    }
   }
 
-  fn seat_id(&self) -> usize {
-    self.row * 8 + self.seat
+  fn count(&self) -> usize {
+    let set: HashSet<char> = self.people.iter()
+      .flat_map(|p| p.answers.clone().into_iter()).collect();
+    set.len()
   }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let cards: Vec<BoardingCard> = stdin.lock().lines()
-    .map(|x| BoardingCard::parse(x.unwrap().trim()))
-    .collect();
-  let mut seats: Vec<usize> = cards.iter().map(|s| s.seat_id()).collect();
-  seats.sort();
-  for i in 1..seats.len() {
-    if seats[i-1] + 2 == seats[i] {
-      println!("seat = {}", seats[i-1] + 1);
-    }
+  let mut input = stdin.lock().lines();
+  let mut count = 0;
+  while let Some(group) = Group::parse(&mut input) {
+    count += group.count();
   }
+  println!("{}", count);
 }
