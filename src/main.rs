@@ -13,6 +13,10 @@ impl Person {
     answers.sort();
     Person{answers}
   }
+
+  fn set(&self) -> HashSet<char> {
+    self.answers.iter().map(|&c| c).collect()
+  }
 }
 
 #[derive(Debug)]
@@ -39,9 +43,9 @@ impl Group {
   }
 
   fn count(&self) -> usize {
-    let set: HashSet<char> = self.people.iter()
-      .flat_map(|p| p.answers.clone().into_iter()).collect();
-    set.len()
+    self.people.iter().map(|p| p.set())
+      .reduce(|l, r| l.intersection(&r).map(|&c| c).collect())
+      .unwrap_or(HashSet::new()).len()
   }
 }
 
@@ -50,6 +54,7 @@ fn main() {
   let mut input = stdin.lock().lines();
   let mut count = 0;
   while let Some(group) = Group::parse(&mut input) {
+    println!("{:?} = {}", group, group.count());
     count += group.count();
   }
   println!("{}", count);
