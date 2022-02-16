@@ -29,6 +29,11 @@ fn main() {
   let cards: Vec<BoardingCard> = stdin.lock().lines()
     .map(|x| BoardingCard::parse(x.unwrap().trim()))
     .collect();
-  println!("max = {:?}", cards.iter().map(|s| s.seat_id())
-    .reduce(|l,r| usize::max(l,r )));
+  let mut seats: Vec<usize> = cards.iter().map(|s| s.seat_id()).collect();
+  seats.sort();
+  for i in 1..seats.len() {
+    if seats[i-1] + 2 == seats[i] {
+      println!("seat = {}", seats[i-1] + 1);
+    }
+  }
 }
