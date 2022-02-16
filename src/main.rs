@@ -37,5 +37,11 @@ fn main() {
   let stdin = io::stdin();
   let field = Field::parse(&mut stdin.lock().lines()
     .map(|x| String::from(x.unwrap().trim())));
-  println!("{}", field.trees_hit((3, 1)));
+  let mut product = 1;
+  for path in vec![(1,1), (3,1), (5,1), (7,1), (1, 2)] {
+    let hits = field.trees_hit(path);
+    println!("{:?} = {}", path, hits);
+    product *= hits;
+  }
+  println!("product = {}", product);
 }
