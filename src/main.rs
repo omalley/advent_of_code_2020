@@ -1,61 +1,81 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io;
 use std::io::BufRead;
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
 #[derive(Debug)]
-struct Person {
-  answers: Vec<char>,
-}
-
-impl Person {
-  fn parse(line: &str) -> Self {
-    let mut answers: Vec<char> = line.trim().chars().collect();
-    answers.sort();
-    Person{answers}
-  }
-
-  fn set(&self) -> HashSet<char> {
-    self.answers.iter().map(|&c| c).collect()
-  }
+struct Bag {
+  contains: Vec<BagCount>,
 }
 
 #[derive(Debug)]
-struct Group {
-  people: Vec<Person>,
+struct BagCount {
+  count: u64,
+  bag: String,
 }
 
-impl Group {
-  fn parse(lines: &mut dyn Iterator<Item=Result<String,io::Error>>) -> Option<Self> {
-    let mut people: Vec<Person> = Vec::new();
-    for line in lines {
-      let line = line.unwrap();
-      if line.is_empty() {
-        return Some(Group{people})
-      } else {
-        people.push(Person::parse(&line));
+#[derive(Debug)]
+struct Rules {
+  rules: HashMap<String,Bag>,
+  contained_in: HashMap<String, Vec<String>>,
+}
+
+impl Rules {
+  fn add_parent(&mut self, parent: &str, child: &str) {
+    if !self.contained_in.contains_key(child) {
+      self.contained_in.insert(child.to_string(), Vec::new());
+    }
+    self.contained_in.get_mut(child).unwrap().push(parent.to_string());
+  }
+
+  fn parse_bag(&mut self, line: &str) {
+    lazy_static! {
+      static ref LINE_PATTERN: Regex = Regex::new(
+        r"^(?P<name>.+) bags contain (?P<contains>.+)[.]$").unwrap();
+      static ref CHILD_PATTERN: Regex = Regex::new(r"^(?P<count>\d+) (?P<bag>.+) bags?$").unwrap();
+    }
+    let capture = LINE_PATTERN.captures(line).unwrap();
+    let name = capture.name("name").unwrap().as_str().to_string();
+    let tail = capture.name("contains").unwrap().as_str().to_string();
+    let mut contains = Vec::new();
+    if tail != "no other bags" {
+      for bag in tail.split(", ") {
+        let bag_cap = CHILD_PATTERN.captures(bag).unwrap();
+        let bag = bag_cap.name("bag").unwrap().as_str().to_string();
+        let count = bag_cap.name("count").unwrap().as_str().parse::<u64>().unwrap();
+        contains.push(BagCount{count, bag: bag.clone()});
+        self.add_parent(&name, &bag);
       }
     }
-    if people.is_empty() {
-      None
-    } else {
-      Some(Group{people})
-    }
+    self.rules.insert(name,Bag{contains});
   }
 
-  fn count(&self) -> usize {
-    self.people.iter().map(|p| p.set())
-      .reduce(|l, r| l.intersection(&r).map(|&c| c).collect())
-      .unwrap_or(HashSet::new()).len()
+  fn parse(input: &mut dyn Iterator<Item=String>) -> Self {
+    let mut result = Rules{rules: HashMap::new(), contained_in: HashMap::new()};
+    for line in input {
+      result.parse_bag(&line);
+    }
+    result
   }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let mut input = stdin.lock().lines();
-  let mut count = 0;
-  while let Some(group) = Group::parse(&mut input) {
-    println!("{:?} = {}", group, group.count());
-    count += group.count();
+  let rules = Rules::parse(&mut stdin.lock().lines()
+    .map(|s| s.unwrap()));
+  let mut result: HashSet<String> = HashSet::new();
+  let mut todo: Vec<String> = Vec::new();
+  todo.push("shiny gold".to_string());
+  while let Some(b) = todo.pop() {
+    for p in rules.contained_in.get(&b).unwrap_or(&Vec::new()) {
+      if !result.contains(p) {
+        result.insert(p.clone());
+        todo.push(p.clone());
+      }
+    }
   }
-  println!("{}", count);
+  println!("size = {}", result.len());
 }
