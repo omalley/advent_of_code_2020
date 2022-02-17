@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::io;
 use std::io::BufRead;
 
@@ -60,22 +59,19 @@ impl Rules {
     }
     result
   }
+
+  fn count(&self, count: u64, color:& str) -> u64 {
+    let result = count + self.rules.get(color).unwrap().contains.iter()
+      .map(|b| self.count(count * b.count, &b.bag))
+      .fold(0, |a,b| a + b);
+    println!("{} {} = {}", color, count, result);
+    result
+  }
 }
 
 fn main() {
   let stdin = io::stdin();
   let rules = Rules::parse(&mut stdin.lock().lines()
     .map(|s| s.unwrap()));
-  let mut result: HashSet<String> = HashSet::new();
-  let mut todo: Vec<String> = Vec::new();
-  todo.push("shiny gold".to_string());
-  while let Some(b) = todo.pop() {
-    for p in rules.contained_in.get(&b).unwrap_or(&Vec::new()) {
-      if !result.contains(p) {
-        result.insert(p.clone());
-        todo.push(p.clone());
-      }
-    }
-  }
-  println!("size = {}", result.len());
+  println!("count = {}", rules.count(1, "shiny gold") - 1);
 }
