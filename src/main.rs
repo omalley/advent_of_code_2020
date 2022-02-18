@@ -1,5 +1,27 @@
+use std::collections::HashMap;
 use std::io;
 use std::io::BufRead;
+
+const MAX_SKIP: i64 = 3;
+
+fn count_arrangements(cur: i64, remaining: &[i64],
+                      cache: &mut HashMap<(i64,usize), usize>) -> usize {
+  let key = (cur, remaining.len());
+  if cache.contains_key(&key) {
+    *cache.get(&key).unwrap()
+  } else if remaining.is_empty() {
+    1
+  } else {
+    let mut total = 0;
+    let mut next = 0;
+    while next < remaining.len() && remaining[next] - cur <= MAX_SKIP {
+      total += count_arrangements(remaining[next], &remaining[next+1..], cache);
+      next += 1;
+    }
+    cache.insert(key, total);
+    total
+  }
+}
 
 fn main() {
   let stdin = io::stdin();
@@ -7,12 +29,6 @@ fn main() {
     .map(|s| s.unwrap().parse::<i64>().unwrap())
     .collect();
   input.sort();
-  input.push(input[input.len() -1] + 3);
-  let mut prev = 0;
-  let mut cnt: Vec<u64> = vec![0; 4];
-  for i in input {
-    cnt[(i - prev) as usize] += 1;
-    prev = i;
-  }
-  println!("{} * {} = {}", cnt[1], cnt[3], cnt[1] * cnt[3]);
+  let mut cache: HashMap<(i64,usize), usize> = HashMap::new();
+  println!("{}", count_arrangements(0, &input, &mut cache));
 }
