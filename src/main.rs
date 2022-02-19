@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::io::BufRead;
 
@@ -6,7 +7,9 @@ use regex::Regex;
 
 #[derive(Debug)]
 enum Operation {
-  Mask{clear: u64, set: u64},
+  // set is a mask of bits to always set to 1
+  // float is a list of positions to float
+  Mask { set: u64, float: Vec<usize> },
   Set{address: u64, value: u64},
 }
 
@@ -17,18 +20,16 @@ impl Operation {
       static ref SET: Regex = Regex::new(r"^mem\[(?P<addr>\d+)] = (?P<value>\d+)$").unwrap();
     }
     if let Some(mask_match) = MASK.captures(line) {
-      let mut clear: u64 = 0;
       let mut set: u64 = 0;
-      let mut mask: u64 = 1;
-      for ch in mask_match.name("mask").unwrap().as_str().chars().rev() {
+      let mut float: Vec<usize> = Vec::new();
+      for (posn, ch) in mask_match.name("mask").unwrap().as_str().chars().enumerate() {
         match ch {
-          '0' => clear |= mask,
-          '1' => set |= mask,
+          '1' => set |= 1 << (35 - posn),
+          'X' => float.push(35 - posn),
           _ => {},
         }
-        mask <<= 1;
       }
-      return Some(Operation::Mask{clear, set});
+      return Some(Operation::Mask { set, float });
     }
     if let Some(set_match) = SET.captures(line) {
       let address = set_match.name("addr").unwrap().as_str().parse::<u64>().unwrap();
@@ -40,38 +41,51 @@ impl Operation {
 }
 
 struct State {
-  clear_mask: u64,
   set_mask: u64,
-  memory: Vec<u64>,
+  float_mask: Vec<usize>,
+  memory: HashMap<u64, u64>,
 }
 
 impl State {
   fn new() -> Self {
-    State{clear_mask: 0, set_mask: 0, memory: Vec::new()}
+    State{set_mask: 0, float_mask: Vec::new(), memory: HashMap::new()}
   }
 
   fn execute(&mut self, operation: &Operation) {
     match operation {
-      Operation::Mask{set, clear} => {
+      Operation::Mask{set, float} => {
         self.set_mask = *set;
-        self.clear_mask = *clear;
+        self.float_mask = float.clone();
       }
       Operation::Set{address, value} => {
-        let value = (value | self.set_mask) & !self.clear_mask;
-        self.set(*address, value);
+        self.set(*address, *value);
       }
+    }
+  }
+
+  fn generate_addresses(address: u64, floats: &[usize]) -> Vec<u64> {
+    if floats.is_empty() {
+      vec![address]
+    } else {
+      let tail = Self::generate_addresses(address, &floats[1..]);
+      let head = floats[0];
+      let mut result: Vec<u64> = tail.iter().map(|x| x & !(1 << head)).collect();
+      for val in tail {
+        result.push(val | (1 << head));
+      }
+      result
     }
   }
 
   fn set(&mut self, address: u64, value: u64) {
-    while self.memory.len() <= address as usize {
-      self.memory.push(0);
+    let address = address | self.set_mask;
+    for add in Self::generate_addresses(address, &self.float_mask) {
+      self.memory.insert(add, value);
     }
-    self.memory[address as usize] = value;
   }
 
   fn sum(&self) -> u64 {
-    self.memory.iter().fold(0, |acc, v| acc + v)
+    self.memory.iter().fold(0, |acc, (_, v)| acc + v)
   }
 }
 
