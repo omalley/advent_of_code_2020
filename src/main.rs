@@ -36,35 +36,52 @@ impl Command {
   }
 }
 
-fn wrap_360(dir: i64) -> i64 {
-  ((dir % 360) + 360) % 360
-}
-
-#[derive(Debug,Default)]
+#[derive(Debug)]
 struct State {
   x: i64,
   y: i64,
-  facing: i64,
+  waypoint_x: i64,
+  waypoint_y: i64,
 }
 
 impl State {
+  fn new() -> Self {
+    State{x: 0, y: 0, waypoint_x: 10, waypoint_y: -1}
+  }
+
   fn execute(&mut self, command: &Command) {
     match command {
-      Command::North(dist) => self.y -= dist,
-      Command::South(dist) => self.y += dist,
-      Command::West(dist) => self.x -= dist,
-      Command::East(dist) => self.x += dist,
-      Command::Left(deg) => self.facing = wrap_360(self.facing - deg),
-      Command::Right(deg) => self.facing = wrap_360(self.facing + deg),
-      Command::Forward(dist) => {
-        match self.facing {
-          0 => self.x += dist,
-          90 => self.y += dist,
-          180 => self.x -= dist,
-          270 => self.y -= dist,
-          _ => panic!("Non-cardinal direction - {}", self.facing),
-        }
+      Command::North(dist) => self.waypoint_y -= dist,
+      Command::South(dist) => self.waypoint_y += dist,
+      Command::West(dist) => self.waypoint_x -= dist,
+      Command::East(dist) => self.waypoint_x += dist,
+      Command::Left(deg) => self.rotate(-*deg),
+      Command::Right(deg) => self.rotate(*deg),
+      Command::Forward(mult) => {
+        self.x += mult * self.waypoint_x;
+        self.y += mult * self.waypoint_y;
       }
+    }
+  }
+
+  fn rotate(&mut self, deg: i64) {
+    let deg = ((deg % 360) + 360) % 360;
+    let old = (self.waypoint_x, self.waypoint_y);
+    match deg {
+      0 => {},
+      90 => {
+        self.waypoint_y = old.0;
+        self.waypoint_x = -old.1;
+      }
+      180 => {
+        self.waypoint_y = -old.1;
+        self.waypoint_x = -old.0;
+      }
+      270 => {
+        self.waypoint_y = -old.0;
+        self.waypoint_x = old.1;
+      }
+      _ => panic!("non-cardinal direction {}", deg),
     }
   }
 
@@ -77,7 +94,7 @@ fn main() {
   let stdin = io::stdin();
   let cmds: Vec<Command> = stdin.lock().lines()
     .map(|s| Command::parse(s.unwrap().trim())).collect();
-  let mut state = State::default();
+  let mut state = State::new();
   for cmd in cmds {
     state.execute(&cmd);
   }
