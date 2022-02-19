@@ -1,106 +1,85 @@
-use std::convert::TryFrom;
 use std::io;
 use std::io::BufRead;
 
-#[derive(Debug, Eq, PartialEq)]
-enum Spot {
-  Floor,
-  Chair,
-  Person,
-}
+use lazy_static::lazy_static;
+use regex::Regex;
 
 #[derive(Debug)]
-struct Floor {
-  seats: Vec<Vec<Spot>>,
-  width: usize,
-  occupied: Vec<Vec<bool>>,
+enum Command {
+  North(i64),
+  East(i64),
+  South(i64),
+  West(i64),
+  Left(i64),
+  Right(i64),
+  Forward(i64),
 }
 
-impl Floor {
-  fn parse(input: &mut dyn Iterator<Item=String>) -> Self {
-    let mut seats: Vec<Vec<Spot>> = Vec::new();
-    for line in input {
-      let row = line.chars().map(|c|
-        match c {
-          '.' => Spot::Floor,
-          'L' => Spot::Chair,
-          _ => Spot::Person,
-        }).collect();
-      seats.push(row);
+impl Command {
+  fn parse(input: &str) -> Self {
+    lazy_static! {
+      static ref COMMAND: Regex = Regex::new(r"^(?P<cmd>[NESWLRF])(?P<arg>-?\d+)$").unwrap();
     }
-    let width= seats[0].len();
-    let occupied = vec![vec![false; width]; seats.len()];
-    Floor{seats, width, occupied}
-  }
-
-  fn find_neighbor(&self, x: usize, y:usize, x_delta: i64, y_delta: i64) -> bool {
-    let mut cur_x= x as i64 + x_delta;
-    let mut cur_y = y as i64 + y_delta;
-    while let (Ok(x), Ok(y)) = (usize::try_from(cur_x), usize::try_from(cur_y)) {
-      if x >= self.width || y >= self.seats.len() {
-        break
-      }
-      if self.seats[y][x] != Spot::Floor {
-        return self.occupied[y][x]
-      }
-      cur_x += x_delta;
-      cur_y += y_delta;
+    let capture = COMMAND.captures(input).unwrap();
+    let cmd = capture.name("cmd").unwrap().as_str();
+    let arg = capture.name("arg").unwrap().as_str().parse::<i64>().unwrap();
+    match cmd {
+      "N" => Self::North(arg),
+      "S" => Self::South(arg),
+      "W" => Self::West(arg),
+      "E" => Self::East(arg),
+      "L" => Self::Left(arg),
+      "R" => Self::Right(arg),
+      "F" => Self::Forward(arg),
+      _ => panic!("Unknown command"),
     }
-    false
   }
+}
 
-  fn neighbors(&self, x: usize, y: usize) -> usize {
-    let mut result = 0;
-    for (del_x, del_y) in vec![(-1,-1), (-1,0), (-1, 1), (0, -1),
-                               (0, 1), (1, -1), (1, 0), (1, 1)] {
-      if self.find_neighbor(x, y, del_x, del_y) {
-        result += 1;
-      }
-    }
-    result
-  }
+fn wrap_360(dir: i64) -> i64 {
+  ((dir % 360) + 360) % 360
+}
 
-  fn update(&mut self) -> bool {
-    let mut next = self.occupied.clone();
-    let mut result = false;
-    for y in 0..next.len() {
-      for x in 0..self.width {
-        if self.occupied[y][x] {
-          if self.neighbors(x,y) >= 5 {
-            result = true;
-            next[y][x] = false;
-          }
-        } else if self.seats[y][x] == Spot::Chair && self.neighbors(x,y) == 0 {
-          result = true;
-          next[y][x] = true;
+#[derive(Debug,Default)]
+struct State {
+  x: i64,
+  y: i64,
+  facing: i64,
+}
+
+impl State {
+  fn execute(&mut self, command: &Command) {
+    match command {
+      Command::North(dist) => self.y -= dist,
+      Command::South(dist) => self.y += dist,
+      Command::West(dist) => self.x -= dist,
+      Command::East(dist) => self.x += dist,
+      Command::Left(deg) => self.facing = wrap_360(self.facing - deg),
+      Command::Right(deg) => self.facing = wrap_360(self.facing + deg),
+      Command::Forward(dist) => {
+        match self.facing {
+          0 => self.x += dist,
+          90 => self.y += dist,
+          180 => self.x -= dist,
+          270 => self.y -= dist,
+          _ => panic!("Non-cardinal direction - {}", self.facing),
         }
       }
     }
-    if result {
-      self.occupied = next;
-    }
-    result
   }
 
-  fn count(&self) -> usize {
-    let mut result = 0;
-    for y in 0..self.occupied.len() {
-      for x in 0..self.width {
-        if self.occupied[y][x] {
-          result += 1;
-        }
-      }
-    }
-    result
+  fn distance(&self) -> i64 {
+    i64::abs(self.x) + i64::abs(self.y)
   }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let mut map: Floor = Floor::parse(&mut stdin.lock().lines()
-    .map(|s| s.unwrap()));
-  while map.update() {
-    // pass
+  let cmds: Vec<Command> = stdin.lock().lines()
+    .map(|s| Command::parse(s.unwrap().trim())).collect();
+  let mut state = State::default();
+  for cmd in cmds {
+    state.execute(&cmd);
   }
-  println!("count = {}", map.count());
+  println!("state = {:?}, dist = {}", state, state.distance());
 }
