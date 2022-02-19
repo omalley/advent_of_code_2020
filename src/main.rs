@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::io;
 use std::io::BufRead;
 
@@ -32,17 +33,28 @@ impl Floor {
     Floor{seats, width, occupied}
   }
 
+  fn find_neighbor(&self, x: usize, y:usize, x_delta: i64, y_delta: i64) -> bool {
+    let mut cur_x= x as i64 + x_delta;
+    let mut cur_y = y as i64 + y_delta;
+    while let (Ok(x), Ok(y)) = (usize::try_from(cur_x), usize::try_from(cur_y)) {
+      if x >= self.width || y >= self.seats.len() {
+        break
+      }
+      if self.seats[y][x] != Spot::Floor {
+        return self.occupied[y][x]
+      }
+      cur_x += x_delta;
+      cur_y += y_delta;
+    }
+    false
+  }
+
   fn neighbors(&self, x: usize, y: usize) -> usize {
     let mut result = 0;
-    for neighbor_x in (x as i64) - 1 ..= (x as i64) + 1 {
-      for neighbor_y in (y as i64) - 1 ..= (y as i64) + 1 {
-        if neighbor_x >= 0 && neighbor_x < self.width as i64 && neighbor_y >= 0 &&
-            neighbor_y < self.seats.len() as i64 &&
-            (neighbor_x != x as i64 || neighbor_y != y as i64) {
-          if self.occupied[neighbor_y as usize][neighbor_x as usize] {
-            result += 1;
-          }
-        }
+    for (del_x, del_y) in vec![(-1,-1), (-1,0), (-1, 1), (0, -1),
+                               (0, 1), (1, -1), (1, 0), (1, 1)] {
+      if self.find_neighbor(x, y, del_x, del_y) {
+        result += 1;
       }
     }
     result
@@ -54,7 +66,7 @@ impl Floor {
     for y in 0..next.len() {
       for x in 0..self.width {
         if self.occupied[y][x] {
-          if self.neighbors(x,y) >= 4 {
+          if self.neighbors(x,y) >= 5 {
             result = true;
             next[y][x] = false;
           }
