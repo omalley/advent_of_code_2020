@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::BufRead;
 
-const MAX_TURN: usize = 2020;
+const MAX_TURN: usize = 30000000;
 
 fn main() {
   let stdin = io::stdin();
