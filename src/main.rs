@@ -1,39 +1,88 @@
 use std::io;
 use std::io::BufRead;
 
-use itertools::Itertools;
-use num::integer::lcm;
+use lazy_static::lazy_static;
+use regex::Regex;
+
+#[derive(Debug)]
+enum Operation {
+  Mask{clear: u64, set: u64},
+  Set{address: u64, value: u64},
+}
+
+impl Operation {
+  fn parse(line: &str) -> Option<Operation> {
+    lazy_static! {
+      static ref MASK: Regex = Regex::new(r"^mask = (?P<mask>[X01]{36})$").unwrap();
+      static ref SET: Regex = Regex::new(r"^mem\[(?P<addr>\d+)] = (?P<value>\d+)$").unwrap();
+    }
+    if let Some(mask_match) = MASK.captures(line) {
+      let mut clear: u64 = 0;
+      let mut set: u64 = 0;
+      let mut mask: u64 = 1;
+      for ch in mask_match.name("mask").unwrap().as_str().chars().rev() {
+        match ch {
+          '0' => clear |= mask,
+          '1' => set |= mask,
+          _ => {},
+        }
+        mask <<= 1;
+      }
+      return Some(Operation::Mask{clear, set});
+    }
+    if let Some(set_match) = SET.captures(line) {
+      let address = set_match.name("addr").unwrap().as_str().parse::<u64>().unwrap();
+      let value = set_match.name("value").unwrap().as_str().parse::<u64>().unwrap();
+      return Some(Operation::Set{address, value});
+    }
+    None
+  }
+}
+
+struct State {
+  clear_mask: u64,
+  set_mask: u64,
+  memory: Vec<u64>,
+}
+
+impl State {
+  fn new() -> Self {
+    State{clear_mask: 0, set_mask: 0, memory: Vec::new()}
+  }
+
+  fn execute(&mut self, operation: &Operation) {
+    match operation {
+      Operation::Mask{set, clear} => {
+        self.set_mask = *set;
+        self.clear_mask = *clear;
+      }
+      Operation::Set{address, value} => {
+        let value = (value | self.set_mask) & !self.clear_mask;
+        self.set(*address, value);
+      }
+    }
+  }
+
+  fn set(&mut self, address: u64, value: u64) {
+    while self.memory.len() <= address as usize {
+      self.memory.push(0);
+    }
+    self.memory[address as usize] = value;
+  }
+
+  fn sum(&self) -> u64 {
+    self.memory.iter().fold(0, |acc, v| acc + v)
+  }
+}
 
 fn main() {
   let stdin = io::stdin();
-  let lines: Vec<String> = stdin.lock().lines()
-    .map(|s| s.unwrap().trim().to_string()).collect();
-  let buses: Vec<(u64,u64)> = lines[1].split(",").enumerate()
-    .filter(|(_,x)| *x != "x")
-    .map(|(p, x) | (p as u64, x.parse::<u64>().unwrap())).collect();
-  println!("buses = {:?}", buses);
-  // since a bus of period P that needs offset O can work with O % P
-  let mut periods: Vec<(u64, u64)> = buses.iter().map(|(o, p) | (o % p, *p)).collect();
-  // group the buses by offset, to find the offset with the most buses
-  periods.sort_by(|(l, _), (r, _)| l.cmp(r));
-  let mut best_offset: u64 = 0;
-  let mut best_periods: Vec<u64> = Vec::new();
-  for (offset, group) in &periods.into_iter().group_by(|(o, _)| o.clone()) {
-    let group_list: Vec<u64> = group.map(|(_, p)| p).collect();
-    if group_list.len() > best_periods.len() {
-      best_offset = offset;
-      best_periods = group_list;
-    }
+  let operations: Vec<Operation> = stdin.lock().lines()
+    .map(|s| Operation::parse(s.unwrap().trim()).unwrap()).collect();
+  let mut state = State::new();
+  for o in operations {
+    println!("execute {:?}", o);
+    state.execute(&o);
   }
-  let period = best_periods.iter().fold(1, |acc, &p| lcm::<u64>(acc, p));
-  println!("best offset = {}, periods = {:?}, period = {}", best_offset, best_periods, period);
-  'outer: for t in (period - best_offset..u64::MAX).step_by(period as usize) {
-    for b in &buses {
-      if (t + b.0) % b.1 != 0 {
-        continue 'outer;
-      }
-    }
-    println!("time = {}", t);
-    break;
-  }
+  println!("sum = {}", state.sum());
 }
