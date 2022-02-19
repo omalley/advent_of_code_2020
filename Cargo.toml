@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 regex = "1.5"
 lazy_static = "1.4"
+itertools = "0.10"
+num = "0.4"
