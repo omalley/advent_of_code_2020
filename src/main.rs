@@ -1,7 +1,7 @@
 use std::io;
 use std::io::BufRead;
 
-#[derive(Debug)]
+#[derive(Clone,Debug,Eq,PartialEq)]
 struct Range {
   lower: i64,
   upper: i64,
@@ -19,7 +19,7 @@ impl Range {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Eq,PartialEq)]
 struct Attribute {
   name: String,
   ranges: Vec<Range>,
@@ -80,8 +80,64 @@ impl Input {
     Input{attributes, your, nearby}
   }
 
-  fn is_valid(&self, val: i64) -> bool {
-    self.attributes.iter().flat_map(|a| a.ranges.iter()).find(|r| r.is_valid(val)).is_some()
+  fn valid_value(ranges: &Vec<&Range>, val: i64) -> bool {
+    for r in ranges {
+      if r.is_valid(val) {
+        return true
+      }
+    }
+    false
+  }
+
+  fn valid_tickets(&self) -> Vec<&Ticket> {
+    let ranges: Vec<&Range> = self.attributes.iter()
+      .flat_map(|a| a.ranges.iter()).collect();
+    let mut result = Vec::new();
+    for ticket in &self.nearby {
+      if ticket.values.iter().filter(|&&v| !Self::valid_value(&ranges, v)).count() == 0 {
+        result.push(ticket);
+      }
+    }
+    result
+  }
+
+  // find the set of attributes that could be at each column
+  fn find_attributes(&self) -> Vec<Vec<&Attribute>> {
+    let mut result = vec![Vec::new(); self.your.values.len()];
+    let tickets = self.valid_tickets();
+    for (i, &val) in tickets[0].values.iter().enumerate() {
+      for a in self.attributes.iter().filter(|a| a.is_valid(val)) {
+        result[i].push(a);
+      }
+      for &t in tickets[1..].iter() {
+        for (i, &val) in t.values.iter().enumerate() {
+          result[i].retain(|a| a.is_valid(val));
+        }
+      }
+    }
+    result
+  }
+
+  // compute the final list of attributes in the right order
+  fn attributes(&self) -> Vec<&Attribute> {
+    let mut result = vec![None; self.your.values.len()];
+    let mut possibilitiies = self.find_attributes();
+    while result.iter().find(|x| x.is_none()).is_some() {
+      for i in 0..possibilitiies.len() {
+        if result[i].is_none() && possibilitiies[i].len() == 1 {
+          result[i] = Some(possibilitiies[i][0]);
+          // remove it from consideration for other places
+          for j in 0..possibilitiies.len() {
+            let loc = possibilitiies[j].iter()
+              .position(|&x| *x == *result[i].unwrap());
+            if let Some(loc) = loc {
+              possibilitiies[j].remove(loc);
+            }
+          }
+        }
+      }
+    }
+    result.iter().map(|x| x.unwrap()).collect()
   }
 }
 
@@ -90,7 +146,9 @@ fn main() {
   let input= Input::parse(&mut stdin.lock().lines()
     .map(|x| x.unwrap().trim().to_string())
     .filter(|x| !x.is_empty()));
-  let bad_values: Vec<i64> = input.nearby.iter().flat_map(|t| t.values.iter())
-    .map(|v| *v).filter(|v| !input.is_valid(*v)).collect();
-  println!("sum = {}", bad_values.iter().fold(0, |acc, v| acc + v));
+  let mapping: Vec<&Attribute> = input.attributes();
+  let depart = input.your.values.iter().enumerate()
+    .filter(|(i, _)| mapping[*i].name.starts_with("departure "))
+    .map(|(_, &v)| v).fold(1, |acc, v| acc * v);
+  println!("depart = {}", depart);
 }
