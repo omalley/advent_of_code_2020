@@ -1,154 +1,139 @@
+use std::fmt;
 use std::io;
 use std::io::BufRead;
 
-#[derive(Clone,Debug,Eq,PartialEq)]
-struct Range {
-  lower: i64,
-  upper: i64,
-}
-
-impl Range {
-  fn parse(line: &str) -> Self {
-    let nums: Vec<i64> = line.split("-")
-      .map(|x| x.trim().parse::<i64>().unwrap()).collect();
-    Range{lower: nums[0], upper: nums[1]}
-  }
-
-  fn is_valid(&self, num: i64) -> bool {
-    self.lower <= num && num <= self.upper
-  }
-}
-
-#[derive(Debug,Eq,PartialEq)]
-struct Attribute {
-  name: String,
-  ranges: Vec<Range>,
-}
-
-impl Attribute {
-  fn parse(line: &str) -> Self {
-    let mut parts = line.split(":");
-    let name = parts.next().unwrap().trim().to_string();
-    let ranges = parts.next().unwrap().split("or")
-      .map(|x| Range::parse(x.trim())).collect();
-    Attribute{name, ranges}
-  }
-
-  fn is_valid(&self, num: i64) -> bool {
-    for r in &self.ranges {
-      if r.is_valid(num) {
-        return true;
-      }
-    }
-    false
-  }
-}
+type Point = (i64, i64, i64);
+type Matrix = Vec<Vec<Vec<bool>>>;
 
 #[derive(Debug)]
-struct Ticket {
-  values: Vec<i64>,
+struct ConwaySpace {
+  origin: Point,
+  far_corner: Point,
+  active: Matrix,
 }
 
-impl Ticket {
-  fn parse(line: &str) -> Self {
-    let values = line.split(",").map(|x| x.parse::<i64>().unwrap()).collect();
-    Ticket{values}
-  }
-}
+impl ConwaySpace {
 
-#[derive(Debug)]
-struct Input {
-  attributes: Vec<Attribute>,
-  your: Ticket,
-  nearby: Vec<Ticket>,
-}
-
-impl Input {
   fn parse(input: &mut dyn Iterator<Item=String>) -> Self {
-    let mut attributes = Vec::new();
-    while let Some(line) = input.next() {
-      if line == "your ticket:" {
-        break;
-      }
-      attributes.push(Attribute::parse(&line));
+    let origin = (0, 0, 0);
+    let mut far_corner = (0, 0, 1);
+    let mut active: Matrix = Vec::new();
+    let mut plane: Vec<Vec<bool>> = Vec::new();
+    for line in input {
+      plane.push(line.chars().map(|c| c == '#').collect());
     }
-    let your = Ticket::parse(input.next().unwrap().as_str());
-    if input.next().unwrap() != "nearby tickets:" {
-      panic!("missing header line");
+    far_corner.1 = plane.len() as i64;
+    if far_corner.1 > 0 {
+      far_corner.0 = plane[0].len() as i64;
     }
-    let nearby = input.map(|x| Ticket::parse(&x)).collect();
-    Input{attributes, your, nearby}
+    active.push(plane);
+    ConwaySpace{origin, far_corner, active}
   }
 
-  fn valid_value(ranges: &Vec<&Range>, val: i64) -> bool {
-    for r in ranges {
-      if r.is_valid(val) {
-        return true
-      }
+  // Is a given cell active?
+  fn is_active(&self, point: Point) -> bool {
+    if point.0 >= self.origin.0 && point.0 < self.far_corner.0 &&
+      point.1 >= self.origin.1 && point.1 < self.far_corner.1 &&
+      point.2 >= self.origin.2 && point.2 < self.far_corner.2 {
+      return self.active[(point.2 - self.origin.2) as usize][(point.1 - self.origin.1) as usize]
+                        [(point.0 - self.origin.0) as usize];
     }
     false
   }
 
-  fn valid_tickets(&self) -> Vec<&Ticket> {
-    let ranges: Vec<&Range> = self.attributes.iter()
-      .flat_map(|a| a.ranges.iter()).collect();
-    let mut result = Vec::new();
-    for ticket in &self.nearby {
-      if ticket.values.iter().filter(|&&v| !Self::valid_value(&ranges, v)).count() == 0 {
-        result.push(ticket);
-      }
-    }
-    result
-  }
-
-  // find the set of attributes that could be at each column
-  fn find_attributes(&self) -> Vec<Vec<&Attribute>> {
-    let mut result = vec![Vec::new(); self.your.values.len()];
-    let tickets = self.valid_tickets();
-    for (i, &val) in tickets[0].values.iter().enumerate() {
-      for a in self.attributes.iter().filter(|a| a.is_valid(val)) {
-        result[i].push(a);
-      }
-      for &t in tickets[1..].iter() {
-        for (i, &val) in t.values.iter().enumerate() {
-          result[i].retain(|a| a.is_valid(val));
-        }
-      }
-    }
-    result
-  }
-
-  // compute the final list of attributes in the right order
-  fn attributes(&self) -> Vec<&Attribute> {
-    let mut result = vec![None; self.your.values.len()];
-    let mut possibilitiies = self.find_attributes();
-    while result.iter().find(|x| x.is_none()).is_some() {
-      for i in 0..possibilitiies.len() {
-        if result[i].is_none() && possibilitiies[i].len() == 1 {
-          result[i] = Some(possibilitiies[i][0]);
-          // remove it from consideration for other places
-          for j in 0..possibilitiies.len() {
-            let loc = possibilitiies[j].iter()
-              .position(|&x| *x == *result[i].unwrap());
-            if let Some(loc) = loc {
-              possibilitiies[j].remove(loc);
+  // count the active neighbors
+  fn count_neighbors(&self, point: Point) -> u64 {
+    let mut result = 0;
+    for x_delta in -1..2 {
+      for y_delta in -1..2 {
+        for z_delta in -1..2 {
+          if x_delta != 0 || y_delta != 0 || z_delta != 0 {
+            if self.is_active((point.0 + x_delta, point.1 + y_delta, point.2 + z_delta)) {
+              result += 1;
             }
           }
         }
       }
     }
-    result.iter().map(|x| x.unwrap()).collect()
+    result
+  }
+
+  fn create_matrix(origin: Point, far_corner: Point) -> Matrix {
+    let mut result = Vec::new();
+    for _ in origin.2..far_corner.2 {
+      let mut plane = Vec::new();
+      for _ in origin.1..far_corner.1 {
+        plane.push(vec![false; (far_corner.0 - origin.0) as usize]);
+      }
+      result.push(plane);
+    }
+    result
+  }
+
+  fn set(active: &mut Matrix, origin: Point, point: Point, value: bool) {
+    active[(point.2 - origin.2) as usize][(point.1 - origin.1) as usize]
+      [(point.0 - origin.0) as usize] = value;
+  }
+
+  fn next(&mut self) {
+    let new_origin = (self.origin.0 - 1, self.origin.1 -1, self.origin.2 - 1);
+    let new_far = (self.far_corner.0 + 1, self.far_corner.1 + 1, self.far_corner.2 + 1);
+    let mut new_active = Self::create_matrix(new_origin, new_far);
+    for x in new_origin.0..new_far.0 {
+      for y in new_origin.1..new_far.1 {
+        for z in new_origin.2..new_far.2 {
+          let neighbors = self.count_neighbors((x, y, z));
+          if self.is_active((x, y, z)) {
+            Self::set(&mut new_active, new_origin, (x, y, z),
+                      (2..=3).contains(&neighbors));
+          } else {
+            Self::set(&mut new_active, new_origin, (x, y, z),neighbors == 3);
+          }
+        }
+      }
+    }
+    self.active = new_active;
+    self.origin = new_origin;
+    self.far_corner = new_far;
+  }
+
+  fn active(&self) -> u64 {
+    let mut result = 0;
+    for plane in &self.active {
+      for row in plane {
+        result += row.iter().filter(|&&b| b).count();
+      }
+    }
+    result as u64
+  }
+}
+
+impl fmt::Display for ConwaySpace {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "origin = {:?}, far = {:?}", self.origin, self.far_corner)?;
+    for z in self.origin.2..self.far_corner.2 {
+      writeln!(f, "z = {}", z)?;
+      for y in self.origin.1..self.far_corner.1 {
+        for x in self.origin.0..self.far_corner.0 {
+          write!(f, "{}", if self.is_active((x, y, z)) {'#'} else {'.'})?;
+        }
+        writeln!(f)?
+      }
+      writeln!(f)?;
+    }
+    write!(f, "")
   }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let input= Input::parse(&mut stdin.lock().lines()
+  let mut space= ConwaySpace::parse(&mut stdin.lock().lines()
     .map(|x| x.unwrap().trim().to_string())
     .filter(|x| !x.is_empty()));
-  let mapping: Vec<&Attribute> = input.attributes();
-  let depart = input.your.values.iter().enumerate()
-    .filter(|(i, _)| mapping[*i].name.starts_with("departure "))
-    .map(|(_, &v)| v).fold(1, |acc, v| acc * v);
-  println!("depart = {}", depart);
+  for _ in 0..6 {
+    println!("active = {}", space.active());
+    space.next();
+  }
+  println!("{}", space);
+  println!("active = {}", space.active());
 }
