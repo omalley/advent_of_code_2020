@@ -1,5 +1,6 @@
 use std::io;
 use std::io::BufRead;
+use std::iter::Peekable;
 
 use regex::{Match, Regex};
 
@@ -55,29 +56,48 @@ enum Expression {
 }
 
 impl Expression {
-  fn parse_term(input: &mut dyn Iterator<Item=&Token>) -> Option<Expression> {
+  fn parse_term<'life, I:Iterator<Item=&'life Token>>(input: &mut Peekable<I>) -> Expression {
     if let Some(head) = input.next() {
       match head {
-        Token::Number(i) => Some(Expression::Number(*i)),
-        Token::Left => Some(Self::parse(input)),
+        Token::Number(i) => Expression::Number(*i),
+        Token::Left => {
+          let expr = Self::parse(input);
+          // consume the right paren
+          input.next();
+          expr
+        },
         _ => panic!("Illegal token - {:?}", head),
       }
     } else {
-      None
+      panic!("Missing term")
     }
   }
 
-  fn parse(input: &mut dyn Iterator<Item=&Token>) -> Expression {
-    let mut current = Self::parse_term(input).unwrap();
-    while let Some(head) = input.next() {
+  fn parse_factor<'life, I:Iterator<Item=&'life Token>>(input: &mut Peekable<I>) -> Expression {
+    let mut current = Self::parse_term(input);
+    while let Some(&head) = input.peek() {
       match &head {
         Token::Add => {
-          let right = Self::parse_term(input).unwrap();
+          input.next();
+          let right = Self::parse_term(input);
           current = Expression::Add(Box::new(current),
                                     Box::new(right))
         },
+        Token::Multiply => break,
+        Token::Right => break,
+        _ => panic!("Bad token {:?}", head),
+      }
+    }
+    current
+  }
+
+  fn parse<'life, I:Iterator<Item=&'life Token>>(input: &mut Peekable<I>) -> Expression {
+    let mut current = Self::parse_factor(input);
+    while let Some(&head) = input.peek() {
+      match &head {
         Token::Multiply => {
-          let right = Self::parse_term(input).unwrap();
+          input.next();
+          let right = Self::parse_factor(input);
           current = Expression::Multiply(Box::new(current),
                                          Box::new(right))
         },
@@ -108,9 +128,9 @@ fn main() {
   let lexer = Lexer::new();
   let mut sum = 0;
   for line in lines {
-    let expr = Expression::parse(&mut lexer.parse(&line).iter());
+    let expr = Expression::parse(&mut lexer.parse(&line).iter().peekable());
     let val = expr.evaluate();
-    println!("{}", val);
+    println!("{:?} = {}", expr, val);
     sum += val;
   }
   println!("sum = {}", sum);
