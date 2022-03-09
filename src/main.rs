@@ -41,10 +41,34 @@ fn main() {
     }
   }
   println!("possible = {:?}", possible_ingredients);
-  let potentials: HashSet<String> = possible_ingredients.values()
-    .flat_map(|s| s.iter())
-    .map(|s| s.clone()).collect();
-  let count = &foods.iter().flat_map(|f| f.ingredients.iter())
-    .filter(|&i| !potentials.contains(i)).count();
-  println!("Count = {}", count);
+  // build a map of ingredient to allergen by picking any allergen that has a single
+  // ingredient and then removing it from the others
+  let mut contains: HashMap<String, String> = HashMap::new();
+  while !possible_ingredients.is_empty() {
+    let mut new_bindings : Vec<(String,String)> = Vec::new();
+    for (k, v) in &possible_ingredients {
+      if v.len() == 1 {
+        new_bindings.push((k.clone(), v.iter().next().unwrap().clone()))
+      }
+    }
+    for (a,i) in new_bindings {
+      contains.insert(i, a.clone());
+      possible_ingredients.remove(&a);
+    }
+    // remove the ingredient from the other allergens
+    for allergens in &mut possible_ingredients.values_mut() {
+      allergens.retain(|i| !contains.contains_key(i));
+    }
+  }
+  // Now we need to sort by allergen
+  let mut contains: Vec<(String,String)> = contains.iter()
+    .map(|(i, a)| (a.clone(), i.clone())).collect();
+  contains.sort_unstable();
+  // and print out the ingredients
+  let mut first = true;
+  for (_, i) in contains {
+    print!("{}{}", if first {""} else {","}, i);
+    first = false;
+  }
+  println!();
 }
