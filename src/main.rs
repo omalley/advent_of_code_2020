@@ -1,8 +1,11 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io;
 use std::io::BufRead;
 
-#[derive(Clone, Copy, Debug)]
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
+#[derive(Clone, Copy, Debug, EnumIter)]
 enum HexDirection {
   East,
   SouthEast,
@@ -70,27 +73,93 @@ impl Point {
     }
   }
 
-  fn add(&self, other: Point) -> Point {
+  fn from_cmds(cmds: &Vec<HexDirection>) -> Self {
+    cmds.iter().map(|&c| Point::from_dir(c))
+      .fold(Point::new(), |acc, p| acc.add(p))
+  }
+
+  fn add(&self, other: Point) -> Self {
     Point{x: self.x + other.x, y: self.y + other.y}
+  }
+}
+
+struct Floor {
+  black: HashSet<Point>,
+}
+
+impl Floor {
+  fn new() -> Self {
+    Floor{black: HashSet::new()}
+  }
+
+  fn flip(&mut self, pnt: Point) {
+    if self.black.contains(&pnt) {
+      self.black.remove(&pnt);
+    } else {
+      self.black.insert(pnt);
+    }
+  }
+
+  fn count_neighbors(&self, pnt: Point) -> u64 {
+    let mut count = 0;
+    for dir in HexDirection::iter() {
+      let neighbor = pnt.add(Point::from_dir(dir));
+      if self.black.contains(&neighbor) {
+        count += 1;
+      }
+    }
+    count
+  }
+
+  fn bounds(&self) -> (Point, Point) {
+    let mut max = Point{x: i64::MIN, y:i64::MIN};
+    let mut min = Point{x: i64::MAX, y: i64::MAX};
+    for p in &self.black {
+      min.x = i64::min(min.x,p.x);
+      min.y = i64::min(min.y, p.y);
+      max.x = i64::max(max.x, p.x);
+      max.y = i64::max(max.y, p.y);
+    }
+    (min, max)
+  }
+
+  fn count(&self) -> usize {
+    self.black.len()
+  }
+
+  fn advance_day(&mut self) {
+    let (min, max) = self.bounds();
+    let mut flip: Vec<Point> = Vec::new();
+    for x in min.x-1..=max.x+1 {
+      for y in min.y-1..=max.y+1 {
+        let p = Point{x, y};
+        let neighbors = self.count_neighbors(p);
+        if self.black.contains(&p) {
+          if neighbors == 0 || neighbors > 2 {
+            flip.push(p);
+          }
+        } else if neighbors == 2 {
+          flip.push(p);
+        }
+      }
+    }
+    for p in flip {
+      self.flip(p);
+    }
   }
 }
 
 fn main() {
   let stdin = io::stdin();
-  let orders: Vec<Vec<HexDirection>> = stdin.lock().lines()
-    .map(|l| HexDirection::parse_line(l.unwrap().trim())).collect();
-  let mut state: HashMap<Point, bool> = HashMap::new();
-  for cmds in orders {
-    let dest = cmds.iter().map(|&c| Point::from_dir(c))
-      .fold(Point::new(), |acc, p| acc.add(p));
-    println!("{:?}", dest);
-    state.insert(dest, !state.get(&dest).or(Some(&false)).unwrap());
+  let points: Vec<Point> = stdin.lock().lines()
+    .map(|l| Point::from_cmds(&HexDirection::parse_line(l.unwrap().trim())))
+      .collect();
+  let mut floor = Floor::new();
+  for &pnt in &points {
+    floor.flip(pnt);
   }
-  let mut count: u64 = 0;
-  for value in state.values() {
-    if *value {
-      count += 1;
-    }
+  for day in 0..100 {
+    floor.advance_day();
+    println!("Day {}: {}", day+1, floor.count());
   }
-  println!("{} of {}", count, state.len());
 }
